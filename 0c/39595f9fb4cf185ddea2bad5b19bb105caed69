@@ -1,0 +1,100 @@
+ops/scenarios.tsv
+  s_6208c722798bf1::t_7006ce868d4a95 1-6
+scripts/incident.sh
+  s_6208c722798bf1::t_7006ce868d4a95 1-31
+go.mod
+  s_6208c722798bf1::t_0bc01181556124 1-2
+  s_6208c722798bf1::t_405ae12fd4e07e 3-5
+  s_6208c722798bf1::t_9957762e50eeb5 6-49
+cmd/aisle/data.go
+  s_6208c722798bf1::t_1256249f2f2694 1-10,13-91,94,108,110-118
+  s_6208c722798bf1::t_833d8dddd83810 11-12,92-93,95-107,109
+.gitignore
+  s_6208c722798bf1::t_2ccb24167c8939 1-3
+cmd/aisle/main.go
+  s_6208c722798bf1::t_1256249f2f2694 1-90,92-99
+  s_6208c722798bf1::t_993edd0b6b7f66 91
+deploy/compose.yaml
+  s_6208c722798bf1::t_147ab45d593e02 7
+  s_6208c722798bf1::t_e966e279edc5de 1-6,8-31
+results/eval.json
+  s_6208c722798bf1::t_01b88fcd481559 1-8,12,15-22,25-28,32,35-37
+  s_6208c722798bf1::t_1812bb47a3b1be 9-11,13-14,23-24,29-31,33-34
+internal/server/server_test.go
+  s_6208c722798bf1::t_28b84007ffaf19 1-46
+internal/eval/metrics_test.go
+  s_6208c722798bf1::t_b7c83d8ef7b1e7 1-47
+cmd/aisle/load.go
+  s_6208c722798bf1::t_6bad1bf190dc9f 1-147
+internal/server/server.go
+  s_6208c722798bf1::t_e06eaf1b3e77be 1-40,44-45,47-53,55-115,117-135,137,139-183,185-240
+  s_6208c722798bf1::t_b06362afb87863 41-43,46,54,116,136,138,184
+deploy/grafana/aisle.json
+  s_6208c722798bf1::t_59989c2fafdc74 1-708
+proto/aisle/v1/search.proto
+  s_6208c722798bf1::t_0bc01181556124 1-52
+internal/faults/faults.go
+  s_6208c722798bf1::t_5c15418acb7d75 1-67
+LICENSE
+  s_6208c722798bf1::t_2ccb24167c8939 1-21
+scripts/dashboard.py
+  s_6208c722798bf1::t_59989c2fafdc74 1-85
+internal/catalog/catalog.go
+  s_6208c722798bf1::t_b7c83d8ef7b1e7 1-158
+internal/search/search_test.go
+  s_6208c722798bf1::t_ea593d5b3a1a05 1-91
+cmd/aisle/eval.go
+  s_6208c722798bf1::t_6bad1bf190dc9f 1-99
+internal/eval/metrics.go
+  s_6208c722798bf1::t_b7c83d8ef7b1e7 1-75
+scripts/download.sh
+  s_6208c722798bf1::t_2ccb24167c8939 1-9
+internal/rag/rag_test.go
+  s_6208c722798bf1::t_c46e895de93435 1-29
+.github/workflows/test.yml
+  s_6208c722798bf1::t_2ccb24167c8939 1-17
+Makefile
+  s_6208c722798bf1::t_2ccb24167c8939 1-43
+ops/drill.yaml
+  s_6208c722798bf1::t_7006ce868d4a95 1-40
+internal/rag/rag.go
+  s_6208c722798bf1::t_c46e895de93435 1-197
+internal/telemetry/telemetry.go
+  s_6208c722798bf1::t_a9ce9396205f9f 24
+  s_6208c722798bf1::t_a646c8593d5002 1-23,25-102
+internal/embed/embed.go
+  s_6208c722798bf1::t_5c15418acb7d75 1-117
+README.md
+  s_6208c722798bf1::t_b63ceb88e10270 1-105
+internal/store/store.go
+  s_6208c722798bf1::t_0a242627ae1750 1-172,175-179,182,186-217
+  s_6208c722798bf1::t_1812bb47a3b1be 173-174,180-181,183-185
+cmd/aisle/serve.go
+  s_6208c722798bf1::t_6bad1bf190dc9f 1-108
+internal/search/search.go
+  s_6208c722798bf1::t_ea593d5b3a1a05 1-168
+deploy/grafana/provider.yaml
+  s_6208c722798bf1::t_2bad4789266e81 1-6
+gen/aisle/v1/search.pb.go
+  s_6208c722798bf1::t_53fdd31ea47c48 1-502
+gen/aisle/v1/search_grpc.pb.go
+  s_6208c722798bf1::t_a916e635aba649 1-165
+go.sum
+  s_6208c722798bf1::t_1c1a94b0bcd9b4 1-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c39595f9fb4cf185ddea2bad5b19bb105caed69",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
