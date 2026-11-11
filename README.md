@@ -13,7 +13,13 @@ Hybrid product search with RAG answers, built to be measured and to be broken.
 ## Scores
 
 <!-- scores:start -->
-Run `make eval` to fill this in.
+Measured against 480 real shopper queries and 233K human relevance labels ([details](docs/results.md)).
+
+| Mode | NDCG@10 | First exact hit (MRR) | p95 latency |
+|---|---|---|---|
+| Keyword | 0.689 | 0.532 | 108 ms |
+| Vector | 0.697 | 0.547 | 15 ms |
+| **Hybrid** | **0.738** | **0.569** | 105 ms |
 <!-- scores:end -->
 
 ## Run it
