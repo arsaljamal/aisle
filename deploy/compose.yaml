@@ -1,0 +1,31 @@
+# Postgres with pgvector, plus Grafana's all-in-one observability stack:
+# OpenTelemetry collector -> Prometheus (metrics), Tempo (traces), Loki (logs).
+name: aisle
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    shm_size: 1gb
+    environment:
+      POSTGRES_USER: aisle
+      POSTGRES_PASSWORD: aisle
+      POSTGRES_DB: aisle
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "maintenance_work_mem=1GB"]
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisle"]
+      interval: 2s
+      retries: 30
+
+  observability:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "127.0.0.1:3000:3000" # Grafana
+      - "127.0.0.1:4317:4317" # OTLP gRPC
+      - "127.0.0.1:4318:4318" # OTLP HTTP
+    volumes:
+      - ./grafana/provider.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/aisle.yaml:ro
+      - ./grafana/aisle.json:/otel-lgtm/aisle-dashboards/aisle.json:ro
+
+volumes:
+  pgdata:

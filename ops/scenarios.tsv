@@ -1,0 +1,6 @@
+fault	alert	root_cause_keywords
+slow-embed	PAGE: aisle search p95 latency is above 1s (SLO 300ms). Investigate and find the root cause.	embed
+db-pool	PAGE: aisle search p95 latency is above 1s (SLO 300ms). Investigate and find the root cause.	db|database|pool|conn
+model-mismatch	PAGE: aisle live search relevance (NDCG@10) has dropped below 0.5. No errors reported. Investigate and find the root cause.	model|embed
+bad-deploy	PAGE: aisle search error rate is above 5%. Investigate and find the root cause.	1.4.1|deploy|rollout|version
+llm-down	PAGE: aisle Ask endpoint is failing. Investigate and find the root cause.	llm|model|endpoint|chat|answer

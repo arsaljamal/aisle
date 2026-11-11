@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package aisle.v1;
+
+option go_package = "github.com/arsaljamal/aisle/gen/aisle/v1;aislev1";
+
+// SearchService finds products and answers shopping questions about them.
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // Ask answers in plain language and cites the products it used.
+  rpc Ask(AskRequest) returns (AskResponse);
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0; // hybrid
+  MODE_KEYWORD = 1;
+  MODE_VECTOR = 2;
+  MODE_HYBRID = 3;
+}
+
+message SearchRequest {
+  string query = 1;
+  Mode mode = 2;
+  int32 limit = 3; // default 10, max 50
+}
+
+message Product {
+  int64 id = 1;
+  string name = 2;
+  string product_class = 3;
+  string category = 4;
+  float score = 5;
+  float average_rating = 6;
+}
+
+message SearchResponse {
+  repeated Product products = 1;
+  Mode mode = 2;
+  int64 took_ms = 3;
+}
+
+message AskRequest {
+  string question = 1;
+  int32 max_products = 2; // products given to the model, default 8
+}
+
+message AskResponse {
+  string answer = 1;
+  repeated Product cited = 2; // products the answer refers to
+  repeated Product considered = 3; // everything retrieved
+  int64 took_ms = 4;
+}
