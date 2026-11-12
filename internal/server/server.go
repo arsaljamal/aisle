@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,9 +46,16 @@ type Server struct {
 	// that match one are scored live, standing in for click-through data.
 	Known      map[string]map[int64]int
 	EmbedModel string
+	// Investigator is the command paged from the control room, e.g.
+	// [drill run --config ops/drill.yaml]; the alert text is appended.
+	Investigator    []string
+	InvestigatorDir string
+	Live            Live
+	Traffic         Traffic
 
-	version   atomic.Value
-	relevance metric.Float64Histogram
+	investigating sync.Mutex
+	version       atomic.Value
+	relevance     metric.Float64Histogram
 }
 
 func New(s *search.Searcher, a *rag.Answerer, f *faults.Set, known map[string]map[int64]int, embedModel string) (*Server, error) {
@@ -113,14 +121,20 @@ func (s *Server) Search(ctx context.Context, req *aislev1.SearchRequest) (*aisle
 }
 
 func (s *Server) search(ctx context.Context, q string, mode search.Mode, limit int) ([]store.Hit, error) {
+	start := time.Now()
 	hits, err := s.Searcher.Search(ctx, q, mode, limit)
+	s.Live.record(time.Since(start), err)
 	if err == nil {
 		if labels, ok := s.Known[normalise(q)]; ok {
 			ranked := make([]int64, len(hits))
 			for i, h := range hits {
 				ranked[i] = h.ID
 			}
-			s.relevance.Record(ctx, eval.NDCG(ranked, labels, 10), metric.WithAttributes(
+			ndcg := eval.NDCG(ranked, labels, 10)
+			if mode == search.Hybrid {
+				s.Live.relevance(ndcg)
+			}
+			s.relevance.Record(ctx, ndcg, metric.WithAttributes(
 				attribute.String("search.mode", string(mode)), attribute.String("app.version", s.Version())))
 		}
 	}
@@ -188,6 +202,25 @@ func (s *Server) HTTP() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, ans)
 	})
+	mux.Handle("GET /", http.FileServerFS(uiFS()))
+	mux.HandleFunc("GET /judge", func(w http.ResponseWriter, r *http.Request) {
+		labels, ok := s.Known[normalise(r.URL.Query().Get("q"))]
+		gains := map[string]int{}
+		for id, g := range labels {
+			gains[strconv.FormatInt(id, 10)] = g
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"known": ok, "gains": gains})
+	})
+	mux.HandleFunc("GET /live", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"series": s.Live.series(), "traffic_rps": s.Traffic.current(),
+			"active": s.Faults.Active(), "version": s.Version(), "investigator": len(s.Investigator) > 0})
+	})
+	mux.HandleFunc("POST /admin/traffic", func(w http.ResponseWriter, r *http.Request) {
+		rps, _ := strconv.ParseFloat(r.URL.Query().Get("rps"), 64)
+		s.Traffic.set(s, min(rps, 20))
+		writeJSON(w, http.StatusOK, map[string]any{"traffic_rps": s.Traffic.current()})
+	})
+	mux.HandleFunc("GET /investigate", s.investigate)
 	mux.HandleFunc("GET /admin/faults", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"active": s.Faults.Active(), "available": faults.Catalogue})
 	})

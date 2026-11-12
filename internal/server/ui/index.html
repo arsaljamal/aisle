@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aisle control room</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--mute:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#16a34a;--warn:#d97706;--bad:#dc2626;--chip:#eef2ff;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1016;--card:#151a23;--ink:#e6e9ef;--mute:#8b93a3;--line:#252c39;--accent:#60a5fa;--good:#22c55e;--warn:#f59e0b;--bad:#f87171;--chip:#1c2433}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+h1{font-size:18px;margin:0;letter-spacing:-.01em}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 10px}
+.chip{background:var(--chip);border-radius:99px;padding:2px 10px;font-size:12px}
+.chip.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+main{display:grid;gap:16px;padding:16px 20px;grid-template-columns:repeat(12,1fr);max-width:1500px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.s12{grid-column:span 12}.s7{grid-column:span 7}.s5{grid-column:span 5}
+@media (max-width:1000px){.s7,.s5{grid-column:span 12}}
+.charts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media (max-width:800px){.charts{grid-template-columns:repeat(2,1fr)}}
+.chart{border:1px solid var(--line);border-radius:10px;padding:10px}
+.chart .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.chart .l{color:var(--mute);font-size:12px}
+canvas{width:100%;height:70px;display:block}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger.on{background:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.switches{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin-top:10px}
+.switch{border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer;transition:.2s}
+.switch.on{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 8%,transparent)}
+.switch b{display:block;font-family:var(--mono);font-size:13px}
+.switch span{color:var(--mute);font-size:12px}
+#steps{height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px}
+.step{display:flex;gap:8px;padding:6px 4px;border-bottom:1px dashed var(--line);animation:in .3s ease}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+.step .k{flex:0 0 74px;font-size:11px;font-weight:600;text-transform:uppercase;padding-top:2px}
+.step .b{font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word;min-width:0}
+.k.alert{color:var(--bad)}.k.call{color:var(--accent)}.k.result{color:var(--mute)}.k.think{color:var(--warn)}.k.done{color:var(--good)}
+#report{margin-top:10px;border-left:3px solid var(--good);padding:2px 12px;display:none}
+#report h3{font-size:14px;margin:10px 0 4px}
+#report p,#report li{margin:2px 0}
+input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);flex:1;min-width:200px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+@media (max-width:800px){.cols{grid-template-columns:1fr}}
+.col h3{margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between}
+.hit{padding:6px 8px;border-radius:6px;margin-bottom:4px;border-left:4px solid var(--line);background:var(--bg);font-size:13px}
+.hit.g2{border-left-color:var(--good)}.hit.g1{border-left-color:var(--warn)}.hit.g0{border-left-color:var(--bad)}
+.hit small{color:var(--mute);display:block}
+.legend{color:var(--mute);font-size:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:middle}
+#answer{margin-top:10px;padding:10px;border-radius:8px;background:var(--bg);display:none}
+.mute{color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>aisle control room</h1>
+  <span class="chip" id="ver">version …</span>
+  <span class="chip" id="faults">no switches on</span>
+  <span class="mute" style="margin-left:auto">Grafana: <a href="http://localhost:3000/d/aisle" target="_blank" rel="noopener">localhost:3000/d/aisle</a></span>
+</header>
+<main>
+  <section class="card s12">
+    <h2>Live health (last 3 minutes)</h2>
+    <div class="charts">
+      <div class="chart"><div class="l">Searches / second</div><div class="v" id="v-rps">–</div><canvas id="c-rps"></canvas></div>
+      <div class="chart"><div class="l">p95 latency (SLO 300 ms)</div><div class="v" id="v-p95">–</div><canvas id="c-p95"></canvas></div>
+      <div class="chart"><div class="l">Error rate</div><div class="v" id="v-err">–</div><canvas id="c-err"></canvas></div>
+      <div class="chart"><div class="l">Live relevance, hybrid (NDCG@10)</div><div class="v" id="v-ndcg">–</div><canvas id="c-ndcg"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card s5">
+    <h2>1 · Traffic</h2>
+    <div class="row" id="traffic">
+      <button data-rps="0">Off</button><button data-rps="2">2 / s</button><button data-rps="5">5 / s</button><button data-rps="10">10 / s</button>
+    </div>
+    <p class="mute">Replays the 480 real shopper queries from the WANDS dataset.</p>
+    <h2 style="margin-top:16px">2 · Break something</h2>
+    <div class="switches" id="switches"></div>
+  </section>
+
+  <section class="card s7">
+    <h2>3 · Page the investigator (Drill Down Harness)</h2>
+    <div class="row" id="pages">
+      <button data-alert="latency">Latency page</button>
+      <button data-alert="errors">Error page</button>
+      <button data-alert="relevance">Relevance page</button>
+      <button data-alert="ask">Ask page</button>
+      <span class="mute" id="inv-status"></span>
+    </div>
+    <div id="steps" style="margin-top:10px"><p class="mute">Steps appear here live: what the investigator asks Grafana, what comes back, and what it concludes.</p></div>
+    <div id="report"></div>
+  </section>
+
+  <section class="card s12">
+    <h2>4 · Try a search</h2>
+    <form class="row" id="sform">
+      <input id="q" value="salon chair" placeholder="e.g. salon chair, outdoor bench cushion">
+      <button type="submit">Search</button>
+      <button type="button" id="askbtn">Ask (RAG)</button>
+    </form>
+    <div class="legend" id="legend" style="margin-top:8px"></div>
+    <div class="cols" id="cols"></div>
+    <div id="answer"></div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let faultInfo={};
+
+function spark(id,vals,{max,line}={}){
+  const c=$(id),r=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
+  c.width=w*r;c.height=h*r;const x=c.getContext('2d');x.scale(r,r);x.clearRect(0,0,w,h);
+  const nums=vals.filter(v=>v!=null);const top=Math.max(max||0,...nums,line||0)*1.15||1;
+  const X=i=>i*(w/(vals.length-1)),Y=v=>h-2-(v/top)*(h-4);
+  if(line){x.strokeStyle=css('--warn');x.setLineDash([4,4]);x.beginPath();x.moveTo(0,Y(line));x.lineTo(w,Y(line));x.stroke();x.setLineDash([])}
+  x.strokeStyle=css('--accent');x.lineWidth=2;x.beginPath();let pen=false;
+  vals.forEach((v,i)=>{if(v==null){pen=false;return}pen?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v));pen=true});x.stroke();
+}
+const last=a=>{for(let i=a.length-1;i>=0;i--)if(a[i]!=null)return a[i];return null};
+
+async function poll(){
+  try{
+    const d=await (await fetch('/live')).json(),s=d.series;
+    const active=s.map(p=>p.rps>0);
+    const rps=s.map(p=>p.rps),p95=s.map((p,i)=>active[i]?p.p95_ms:null),err=s.map((p,i)=>active[i]?p.err*100:null),nd=s.map(p=>p.ndcg);
+    spark('#c-rps',rps);spark('#c-p95',p95,{line:300});spark('#c-err',err,{max:5,line:5});spark('#c-ndcg',nd,{max:1,line:.5});
+    const lv=last(p95),le=last(err),ln=last(nd);
+    $('#v-rps').textContent=(last(rps)||0).toFixed(1);
+    $('#v-p95').textContent=lv==null?'–':Math.round(lv)+' ms';$('#v-p95').style.color=lv>1000?css('--bad'):lv>300?css('--warn'):'';
+    $('#v-err').textContent=le==null?'–':le.toFixed(1)+' %';$('#v-err').style.color=le>5?css('--bad'):'';
+    $('#v-ndcg').textContent=ln==null?'–':ln.toFixed(2);$('#v-ndcg').style.color=ln!=null&&ln<.5?css('--bad'):'';
+    $('#ver').textContent='version '+d.version;
+    $('#faults').textContent=d.active&&d.active.length?'switches on: '+d.active.join(', '):'no switches on';
+    $('#faults').className='chip'+(d.active&&d.active.length?' bad':'');
+    document.querySelectorAll('#traffic button').forEach(b=>b.classList.toggle('on',+b.dataset.rps===d.traffic_rps));
+    document.querySelectorAll('.switch').forEach(el=>el.classList.toggle('on',(d.active||[]).includes(el.dataset.name)));
+    document.querySelectorAll('#pages button').forEach(b=>b.disabled=!d.investigator||investigating);
+    if(!d.investigator)$('#inv-status').textContent='start serve with --investigator to enable';
+  }catch(e){}
+}
+
+async function loadSwitches(){
+  const d=await (await fetch('/admin/faults')).json();faultInfo=d.available;
+  $('#switches').innerHTML=Object.keys(faultInfo).sort().map(n=>`<div class="switch" data-name="${n}"><b>${n}</b><span>${esc(faultInfo[n])}</span></div>`).join('');
+  document.querySelectorAll('.switch').forEach(el=>el.onclick=async()=>{
+    await fetch(`/admin/faults/${el.dataset.name}?on=${!el.classList.contains('on')}`,{method:'POST'});poll();
+  });
+}
+document.querySelectorAll('#traffic button').forEach(b=>b.onclick=async()=>{await fetch('/admin/traffic?rps='+b.dataset.rps,{method:'POST'});poll()});
+
+let investigating=false;
+function addStep(kind,label,text){
+  const el=document.createElement('div');el.className='step';
+  el.innerHTML=`<div class="k ${kind}">${label}</div><div class="b">${esc(text)}</div>`;
+  $('#steps').appendChild(el);$('#steps').scrollTop=1e9;
+}
+function md(src){
+  return src.split('\n').map(l=>{
+    if(/^#{1,3} /.test(l))return '<h3>'+esc(l.replace(/^#+ /,''))+'</h3>';
+    if(/^\s*[-*] /.test(l))return '<li>'+esc(l.replace(/^\s*[-*] /,''))+'</li>';
+    return l.trim()?'<p>'+esc(l)+'</p>':'';
+  }).join('').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+}
+document.querySelectorAll('#pages button').forEach(b=>b.onclick=()=>{
+  investigating=true;poll();$('#steps').innerHTML='';$('#report').style.display='none';
+  let report='',t0=Date.now();const tick=setInterval(()=>$('#inv-status').textContent='investigating… '+Math.round((Date.now()-t0)/1000)+' s',1000);
+  const es=new EventSource('/investigate?alert='+b.dataset.alert);
+  const parse=e=>JSON.parse(e.data);
+  es.addEventListener('alert',e=>addStep('alert','page',parse(e)));
+  es.addEventListener('step',e=>{
+    const line=parse(e);if(line.startsWith('time='))return;
+    const m=line.match(/^\[turn (\d+)\] (\S+)\s+(.*)$/);
+    if(!m){if(line.trim())addStep('result','log',line);return}
+    const [,turn,kind,body]=m;
+    if(kind==='tool_call')addStep('call','asks #'+turn,body);
+    else if(kind==='tool_result')addStep('result','sees',body.length>400?body.slice(0,400)+' …':body);
+    else if(kind==='model_reply')addStep('think','thinks',body);
+    else if(kind==='stop')addStep('done','stop',body);
+  });
+  es.addEventListener('report',e=>{report+=parse(e)+'\n';$('#report').style.display='block';$('#report').innerHTML=md(report)});
+  es.addEventListener('done',e=>{addStep('done','done',parse(e));finish()});
+  es.addEventListener('error',e=>{if(e.data)addStep('alert','error',parse(e));finish()});
+  function finish(){es.close();clearInterval(tick);investigating=false;$('#inv-status').textContent='';poll()}
+});
+
+async function doSearch(e){
+  e&&e.preventDefault();const q=$('#q').value.trim();if(!q)return;
+  const judge=await (await fetch('/judge?q='+encodeURIComponent(q))).json();
+  $('#legend').innerHTML=judge.known?'Human ratings for this query:<i style="background:var(--good)"></i>exact<i style="background:var(--warn)"></i>partial<i style="background:var(--bad)"></i>irrelevant<i style="background:var(--line)"></i>not rated':'Not one of the 480 labelled queries, so results are not coloured. Try "salon chair" or "outdoor bench cushion".';
+  const modes=['keyword','vector','hybrid'];
+  const res=await Promise.all(modes.map(async m=>{const t=performance.now();const r=await (await fetch(`/search?mode=${m}&q=${encodeURIComponent(q)}`)).json();return {m,r:Array.isArray(r)?r:[],ms:performance.now()-t,err:r.error}}));
+  $('#cols').innerHTML=res.map(({m,r,ms,err})=>{
+    let ndcg='';
+    if(judge.known){const g=r.map(h=>judge.gains[h.ID]||0);const dcg=g.reduce((a,v,i)=>a+v/Math.log2(i+2),0);
+      const ideal=Object.values(judge.gains).filter(v=>v>0).sort((a,b)=>b-a).slice(0,10).reduce((a,v,i)=>a+v/Math.log2(i+2),0);ndcg=' · NDCG '+(ideal?dcg/ideal:0).toFixed(2)}
+    return `<div class="col"><h3><span>${m}</span><span class="mute">${Math.round(ms)} ms${ndcg}</span></h3>${err?'<p style="color:var(--bad)">'+esc(err)+'</p>':''}${r.map(h=>{
+      const g=judge.known?(h.ID in judge.gains?'g'+judge.gains[h.ID]:''):'';
+      return `<div class="hit ${g}">${esc(h.Name)}<small>${esc(h.Class)} · ★ ${h.Rating.toFixed(1)}</small></div>`}).join('')}</div>`;
+  }).join('');
+}
+$('#sform').onsubmit=doSearch;
+$('#askbtn').onclick=async()=>{
+  const q=$('#q').value.trim();if(!q)return;const a=$('#answer');a.style.display='block';a.textContent='thinking…';
+  const r=await (await fetch('/ask?q='+encodeURIComponent('I am looking for '+q+'. What do you recommend?'))).json();
+  a.innerHTML=r.error?'<span style="color:var(--bad)">'+esc(r.error)+'</span>':esc(r.Text).replace(/\[P(\d+)\]/g,'<span class="chip">P$1</span>')+'<p class="mute">Cited: '+(r.Cited||[]).map(c=>esc(c.Name)).join(' · ')+'</p>';
+};
+loadSwitches();poll();setInterval(poll,2000);doSearch();
+</script>
+</body>
+</html>

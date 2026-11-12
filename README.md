@@ -62,6 +62,20 @@ question ─► gRPC Ask ─► hybrid top 8 ─► LLM with numbered products �
 - **Live relevance**: when a live search matches a labelled query, its NDCG@10 is recorded as a metric.
   This stands in for click-through data, so quality is monitored like latency.
 
+## Control room
+
+`aisle serve` also serves a control room at http://127.0.0.1:7071: live charts, traffic and break-switch
+buttons, keyword vs vector vs hybrid results side by side (coloured by human ratings), Ask, and a
+"page the investigator" button that streams Drill Down Harness's steps live as it works.
+
+```sh
+AISLE_INVESTIGATOR="drill run --config ops/drill.yaml" ./bin/aisle serve
+```
+
+The HTTP side door binds to localhost only: it can flip break switches and run the investigator.
+For local models, start Ollama with a larger context (`OLLAMA_CONTEXT_LENGTH=32768 ollama serve`):
+the default 4K window silently cuts off the investigator's instructions.
+
 ## Break it
 
 ```sh

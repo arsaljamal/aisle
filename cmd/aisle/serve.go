@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -30,10 +32,12 @@ func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	c := commonFlags(fs)
 	grpcAddr := fs.String("grpc", env("AISLE_GRPC_ADDR", ":7070"), "gRPC listen address")
-	httpAddr := fs.String("http", env("AISLE_HTTP_ADDR", ":7071"), "HTTP side-door listen address")
+	httpAddr := fs.String("http", env("AISLE_HTTP_ADDR", "127.0.0.1:7071"), "HTTP side-door listen address")
 	chatURL := fs.String("chat-url", env("AISLE_CHAT_URL", "http://localhost:11434/v1"), "OpenAI-compatible chat endpoint")
 	chatModel := fs.String("chat-model", env("AISLE_CHAT_MODEL", "llama3.2:3b"), "answer model")
 	ef := fs.Int("ef-search", 100, "HNSW search breadth")
+	investigator := fs.String("investigator", env("AISLE_INVESTIGATOR", ""),
+		`command the control room pages, e.g. "drill run --config ops/drill.yaml" (alert text is appended)`)
 	fs.Parse(args)
 
 	shutdown, err := telemetry.Start(ctx, "aisle", server.GoodVersion)
@@ -66,7 +70,8 @@ func runServe(ctx context.Context, args []string) error {
 		return err
 	}
 	known := map[string]map[int64]int{}
-	if qs, err := catalog.Queries(c.data); err == nil {
+	qs, _ := catalog.Queries(c.data)
+	if len(qs) > 0 {
 		if labels, err := catalog.LoadLabels(c.data); err == nil {
 			known = server.KnownQueries(qs, labels)
 		}
@@ -74,6 +79,9 @@ func runServe(ctx context.Context, args []string) error {
 	if srv, err = server.New(s, a, f, known, c.embedModel); err != nil {
 		return err
 	}
+	srv.Traffic.Queries = qs
+	srv.Investigator = strings.Fields(*investigator)
+	srv.InvestigatorDir, _ = os.Getwd()
 
 	g := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	aislev1.RegisterSearchServiceServer(g, srv)
@@ -85,6 +93,7 @@ func runServe(ctx context.Context, args []string) error {
 		return err
 	}
 	h := &http.Server{Addr: *httpAddr, Handler: otelhttp.NewHandler(srv.HTTP(), "http"), ReadHeaderTimeout: 5 * time.Second}
+	slog.InfoContext(ctx, "control room", "url", "http://"+*httpAddr)
 
 	errc := make(chan error, 2)
 	go func() { errc <- g.Serve(lis) }()
