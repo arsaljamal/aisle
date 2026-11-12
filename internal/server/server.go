@@ -22,6 +22,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	aislev1 "github.com/arsaljamal/aisle/gen/aisle/v1"
+	"github.com/arsaljamal/drill-down-harness/config"
+	"github.com/arsaljamal/drill-down-harness/viewer"
+
 	"github.com/arsaljamal/aisle/internal/catalog"
 	"github.com/arsaljamal/aisle/internal/eval"
 	"github.com/arsaljamal/aisle/internal/faults"
@@ -56,6 +59,8 @@ type Server struct {
 
 	// HistoryFile keeps past investigations (JSON lines) for the scoreboard.
 	HistoryFile string
+	// Components are the viewer's map boxes, used when replaying old runs.
+	Components []config.Component
 
 	investigating sync.Mutex
 	historyMu     sync.Mutex
@@ -227,6 +232,8 @@ func (s *Server) HTTP() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"traffic_rps": s.Traffic.current()})
 	})
 	mux.HandleFunc("GET /investigate", s.investigate)
+	mux.HandleFunc("GET /investigations/{i}/replay", s.replay)
+	mux.Handle("GET /viewer/", http.StripPrefix("/viewer", viewer.Page()))
 	mux.HandleFunc("GET /investigations", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.investigations())
 	})

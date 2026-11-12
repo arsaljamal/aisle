@@ -64,17 +64,39 @@ question ─► gRPC Ask ─► hybrid top 8 ─► LLM with numbered products �
 
 ## Control room
 
-`aisle serve` also serves a control room at http://127.0.0.1:7071: live charts, traffic and break-switch
-buttons, keyword vs vector vs hybrid results side by side (coloured by human ratings), Ask, and a
-"page the investigator" button that streams Drill Down Harness's steps live as it works.
+![Control room](docs/img/control-room.png)
+
+`aisle serve` also serves a control room at http://127.0.0.1:7071:
+
+1. **Live health**: searches per second, p95 latency, error rate, live relevance.
+2. **Traffic and break switches**: replay real shopper queries, then break one part.
+3. **Page the investigator**: Drill Down Harness investigates in the viewer below, live. A system map shows
+   which part it is checking and what it found (green normal, red changed), a plain-words story explains each
+   step, and the report is graded against the switch that was really on.
+4. **Scoreboard**: every investigation, with ▶ to replay it.
+5. **Search side by side**: keyword, vector and hybrid results, coloured by the human ratings.
 
 ```sh
-AISLE_INVESTIGATOR="drill run --config ops/drill.yaml" ./bin/aisle serve
+AISLE_INVESTIGATOR="drill run --otlp --events json --config ops/drill-v2.yaml" ./bin/aisle serve
 ```
 
 The HTTP side door binds to localhost only: it can flip break switches and run the investigator.
 For local models, start Ollama with a larger context (`OLLAMA_CONTEXT_LENGTH=32768 ollama serve`):
 the default 4K window silently cuts off the investigator's instructions.
+
+## Investigations
+
+![An investigation, replayed](docs/img/investigation.gif)
+
+Results, hand-graded, with replays of every run: **[docs/incidents.md](docs/incidents.md)**.
+Latest: 2 of 5 root causes correct and 1 half right, with a free 8B local model.
+
+## Dashboards
+
+`make up` starts Grafana at http://localhost:3000 with two dashboards: **aisle** (the service) and
+**Drill Down Harness** (the investigator itself: runs, outcomes, time, tools, tokens, send-backs).
+
+![aisle dashboard](docs/img/aisle-dashboard.png)
 
 ## Break it
 
@@ -96,8 +118,6 @@ scripts/incident.sh db-pool         # traffic → fault → page the harness →
 The service never logs the word "fault". It logs what real systems log (a rollout, a config reload,
 a maintenance window), so the investigator has to connect the dots.
 
-<!-- incidents:start -->
-<!-- incidents:end -->
 
 ## Data
 

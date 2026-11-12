@@ -18,6 +18,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/arsaljamal/drill-down-harness/config"
+
 	aislev1 "github.com/arsaljamal/aisle/gen/aisle/v1"
 	"github.com/arsaljamal/aisle/internal/catalog"
 	"github.com/arsaljamal/aisle/internal/faults"
@@ -84,6 +86,13 @@ func runServe(ctx context.Context, args []string) error {
 	srv.Investigator = strings.Fields(*investigator)
 	srv.InvestigatorDir, _ = os.Getwd()
 	srv.HistoryFile = *history
+	for i, a := range srv.Investigator { // read the map boxes from the investigator's drill.yaml
+		if a == "--config" && i+1 < len(srv.Investigator) {
+			if cfg, err := config.Load(srv.Investigator[i+1]); err == nil {
+				srv.Components = cfg.Viewer.Components
+			}
+		}
+	}
 	srv.LoadHistory()
 
 	g := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))

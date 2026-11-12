@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -201,9 +202,10 @@ func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	send := func(event string, data any) {
-		b, _ := json.Marshal(data)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
+	// The stream speaks the Drill Down viewer's protocol: every event is a
+	// "step" holding one JSON object; "end" closes it.
+	step := func(ev []byte) {
+		fmt.Fprintf(w, "event: step\ndata: %s\n\n", ev)
 		flusher.Flush()
 	}
 	rec := Investigation{At: time.Now(), Alert: key, Active: s.Faults.Active()}
@@ -213,39 +215,25 @@ func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	if err := cmd.Start(); err != nil {
-		send("error", err.Error())
+		step(hostEvent("final", map[string]any{"message": "could not start the investigator: " + err.Error()}))
+		fmt.Fprint(w, "event: end\ndata: {}\n\n")
 		return
 	}
-	send("alert", map[string]any{"text": alert, "active": rec.Active})
-	lines := make(chan [2]string)
-	var wg sync.WaitGroup
-	for kind, pipe := range map[string]io.Reader{"report": stdout, "step": stderr} {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sc := bufio.NewScanner(pipe)
-			sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
-			for sc.Scan() {
-				lines <- [2]string{kind, sc.Text()}
-			}
-		}()
-	}
-	go func() { wg.Wait(); close(lines) }()
-	var report strings.Builder
-	for l := range lines {
-		if l[0] == "report" {
-			report.WriteString(l[1] + "\n")
-			send("report", l[1])
-			continue
-		}
+	go io.Copy(io.Discard, stdout) // the report also arrives as a "final" event
+	sc := bufio.NewScanner(stderr)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	sentContext := false
+	for sc.Scan() {
+		line := append([]byte(nil), sc.Bytes()...)
 		var ev struct {
 			Kind         string `json:"kind"`
-			Turn         int    `json:"turn"`
+			Turn         int    `json:"turns"`
 			Stop         string `json:"stop"`
+			Message      string `json:"message"`
 			InputTokens  int64  `json:"input_tokens"`
 			OutputTokens int64  `json:"output_tokens"`
 		}
-		if json.Unmarshal([]byte(l[1]), &ev) != nil || ev.Kind == "" {
+		if json.Unmarshal(line, &ev) != nil || ev.Kind == "" {
 			continue // tool server logs, not investigator steps
 		}
 		switch ev.Kind {
@@ -255,16 +243,96 @@ func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
 			rec.Nudges++
 		case "summary":
 			rec.Turns, rec.Stop, rec.Tokens = ev.Turn, ev.Stop, ev.InputTokens+ev.OutputTokens
+		case "final":
+			rec.Report = ev.Message
 		}
-		rec.Steps = append(rec.Steps, json.RawMessage(l[1]))
-		send("step", json.RawMessage(l[1]))
+		rec.Steps = append(rec.Steps, line)
+		step(line)
+		if ev.Kind == "meta" && !sentContext {
+			sentContext = true
+			c := hostEvent("context", map[string]any{"truth": truthNote(rec.Active)})
+			rec.Steps = append(rec.Steps, c)
+			step(c)
+		}
 	}
 	_ = cmd.Wait()
 	rec.Seconds = time.Since(rec.At).Seconds()
-	rec.Report = report.String()
 	rec.Verdict = faults.Grade(rec.Report, rec.Active)
+	v := verdictEvent(rec)
+	rec.Steps = append(rec.Steps, v)
+	step(v)
 	s.saveInvestigation(rec)
-	send("done", rec)
+	fmt.Fprint(w, "event: end\ndata: {}\n\n")
+	flusher.Flush()
+}
+
+func hostEvent(kind string, fields map[string]any) []byte {
+	fields["kind"] = kind
+	fields["at"] = time.Now().UnixMilli()
+	b, _ := json.Marshal(fields)
+	return b
+}
+
+func truthNote(active []string) string {
+	if len(active) == 0 {
+		return "No break switch is on: this is a false-alarm test."
+	}
+	return "Break switch actually on (the investigator is not told): <b>" + strings.Join(active, ", ") + "</b>"
+}
+
+func verdictEvent(rec Investigation) []byte {
+	return hostEvent("verdict", map[string]any{"verdict": rec.Verdict,
+		"note": "graded automatically against the switch that was on (a rough guide; check the report)"})
+}
+
+// replay streams a stored investigation at its recorded pace divided by speed.
+func (s *Server) replay(w http.ResponseWriter, r *http.Request) {
+	i, err := strconv.Atoi(r.PathValue("i"))
+	hist := s.investigations()
+	if err != nil || i < 0 || i >= len(hist) {
+		http.NotFound(w, r)
+		return
+	}
+	speed, _ := strconv.ParseFloat(r.URL.Query().Get("speed"), 64)
+	if speed <= 0 {
+		speed = 3
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	rec := hist[i]
+	steps := rec.Steps
+	if len(steps) > 0 && !strings.Contains(string(steps[0]), `"meta"`) {
+		// Recorded before meta events existed: add one so the page can start.
+		meta := hostEvent("meta", map[string]any{"task": Alerts[rec.Alert], "components": s.Components})
+		steps = append([]json.RawMessage{meta, hostEvent("context", map[string]any{"truth": truthNote(rec.Active)})}, steps...)
+		steps = append(steps, hostEvent("final", map[string]any{"message": rec.Report}), verdictEvent(rec))
+	}
+	var last int64
+	for _, ev := range steps {
+		var at struct {
+			At int64 `json:"at"`
+		}
+		_ = json.Unmarshal(ev, &at)
+		if last > 0 && at.At > last {
+			select {
+			case <-time.After(min(time.Duration(float64(at.At-last)/speed)*time.Millisecond, 3*time.Second)):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if at.At > 0 {
+			last = at.At
+		}
+		fmt.Fprintf(w, "event: step\ndata: %s\n\n", ev)
+		flusher.Flush()
+	}
+	fmt.Fprint(w, "event: end\ndata: {}\n\n")
+	flusher.Flush()
 }
 
 func (s *Server) saveInvestigation(rec Investigation) {

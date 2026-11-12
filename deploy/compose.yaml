@@ -26,6 +26,8 @@ services:
     volumes:
       - ./grafana/provider.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/aisle.yaml:ro
       - ./grafana/aisle.json:/otel-lgtm/aisle-dashboards/aisle.json:ro
+      # Drill Down Harness's own dashboard (copied from its repo: deploy/grafana/drill.json)
+      - ./grafana/drill.json:/otel-lgtm/aisle-dashboards/drill.json:ro
 
 volumes:
   pgdata:

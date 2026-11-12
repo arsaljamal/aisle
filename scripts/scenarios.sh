@@ -19,10 +19,10 @@ run() { # fault alert condition
   else
     until_live "$cond"
   fi
-  curl -sN -m 1200 "$H/investigate?alert=$alert" | grep -A1 '^event: done' | tail -1 |
-    python3 -c "import json,sys;d=json.loads(sys.stdin.read()[6:]);print('   verdict:',d['verdict'] or '-','| seconds:',round(d['seconds']),'| queries:',d['queries'],'| sent back:',d['nudges'])"
+  curl -sN -m 1200 "$H/investigate?alert=$alert" >/dev/null
+  curl -s "$H/investigations" | python3 -c "import json,sys;d=json.load(sys.stdin)[-1];print('   verdict:',d['verdict'] or '-','| seconds:',round(d['seconds']),'| checks:',d['queries'],'| sent back:',d['nudges'])"
   ./bin/aisle break "$fault" off >/dev/null
-  echo "   repaired; letting it recover"; sleep 75
+  echo "   repaired; letting it recover"; sleep 120
 }
 curl -s -X POST "$H/admin/traffic?rps=4" >/dev/null; sleep 30
 run slow-embed     latency   "sum(p['p95_ms']>1000 for p in s)>=25"

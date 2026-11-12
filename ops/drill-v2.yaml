@@ -69,7 +69,19 @@ mcp_servers:
     env: { GRAFANA_URL: "http://localhost:3000" }
 
 # Long metric series reach the model as one line each: "was X, now Y, jumped N min ago".
-lenses: [series]
+# Log lines reach it with their age ("2 min ago: config reloaded ..."), newest first.
+lenses: [series, logs]
+
+# The boxes on the live map (drill run --ui, or aisle's control room).
+viewer:
+  components:
+    - { name: "Embedding",     icon: "🧬", match: "aisle_embed",                blame: "embedding (host|service|latency|time|call|model)|maintenance|query_model|v2-preview" }
+    - { name: "Database",      icon: "🗄️", match: "db_client|postgres",         blame: "max_conns|connection pool|database (connection|contention|pool)" }
+    - { name: "Errors & versions", icon: "🚀", match: "aisle_search_errors|app_version", blame: "1\\.4\\.1|rollout of|deploy" }
+    - { name: "Search quality", icon: "🎯", match: "relevance",                 blame: "" }
+    - { name: "Answer model",  icon: "🤖", match: "aisle_ask|llm",              blame: "llm|answer model|chat model" }
+    - { name: "Search speed",  icon: "⏱️", match: "aisle_search_duration|rpc_server", blame: "" }
+    - { name: "Change log",    icon: "📜", match: "query_loki_logs",            blame: "" }
 
 approvals:
   unsafe: deny

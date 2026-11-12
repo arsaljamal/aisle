@@ -3,6 +3,7 @@ module github.com/arsaljamal/aisle
 go 1.26.0
 
 require (
+	github.com/arsaljamal/drill-down-harness v0.0.0-20261112110155-47e7c391c0e9
 	github.com/exaring/otelpgx v0.13.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/pgvector/pgvector-go v0.4.1
@@ -46,4 +47,5 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -79,10 +79,11 @@ input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8
 .card2 canvas{height:56px}
 .card2 .err{color:var(--bad)}
 .verdict{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:650;font-size:12px;color:#fff}
-.verdict.correct{background:var(--good)}.verdict.wrong,.verdict.no{background:var(--bad)}.verdict.none{background:var(--mute)}
+.verdict.correct{background:var(--good)}.verdict.wrong,.verdict.no{background:var(--bad)}.verdict.mixed{background:var(--warn)}.verdict.none{background:var(--mute)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{color:var(--mute);font-weight:600;font-size:12px}
+iframe#viewer{width:100%;height:1500px;border:1px solid var(--line);border-radius:12px;background:var(--bg);display:none}
 </style>
 </head>
 <body>
@@ -115,33 +116,22 @@ th{color:var(--mute);font-weight:600;font-size:12px}
 
   <section class="card s7">
     <h2>3 · Page the investigator (Drill Down Harness)</h2>
+    <p class="mute" style="margin-top:0">Break something on the left, wait until the charts above go red (about a minute), then page. The investigator is not told which switch is on.</p>
     <div class="row" id="pages">
-      <button data-alert="latency">Latency page</button>
-      <button data-alert="errors">Error page</button>
-      <button data-alert="relevance">Relevance page</button>
-      <button data-alert="ask">Ask page</button>
+      <button data-alert="latency">⏱️ Latency page</button>
+      <button data-alert="errors">🚀 Error page</button>
+      <button data-alert="relevance">🎯 Relevance page</button>
+      <button data-alert="ask">🤖 Ask page</button>
     </div>
-    <div class="phases" id="phases">
-      <div class="ph" data-p="triage"><b>1</b>Triage<small>confirm the symptom</small></div>
-      <div class="ph" data-p="drill"><b>2</b>Drill down<small>split by part, check changes</small></div>
-      <div class="ph" data-p="report"><b>3</b>Report<small>root cause + evidence</small></div>
-    </div>
-    <div class="stats">
-      <div><span id="st-time">0 s</span><small>time</small></div>
-      <div><span id="st-turns">0</span><small>turns</small></div>
-      <div><span id="st-queries">0</span><small>queries</small></div>
-      <div><span id="st-nudges">0</span><small>sent back</small></div>
-      <div><span id="st-tokens">–</span><small>tokens</small></div>
-    </div>
-    <div id="truth" class="mute" style="margin:6px 0"></div>
-    <div id="steps"><p class="mute">Press a page button. Each step appears here as it happens: what the investigator asks Grafana, what it sees (drawn as charts), when the report gate sends it back, and its final report with an automatic grade.</p></div>
-    <div id="report"></div>
+    <h2 style="margin-top:18px">Scoreboard</h2>
+    <div style="overflow-x:auto"><table id="board"><thead><tr><th>When</th><th>Page</th><th>True cause</th><th>Verdict</th><th>Time</th><th>Checks</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p class="mute" id="board-sum" style="font-size:12px"></p>
   </section>
 
   <section class="card s12">
-    <h2>Scoreboard: every investigation so far</h2>
-    <div style="overflow-x:auto"><table id="board"><thead><tr><th>When</th><th>Page</th><th>True cause (hidden from it)</th><th>Verdict</th><th>Time</th><th>Queries</th><th>Sent back</th><th>Tokens</th></tr></thead><tbody></tbody></table></div>
-    <p class="mute" id="board-sum"></p>
+    <h2>Investigator view</h2>
+    <iframe id="viewer" title="Drill Down viewer" src="about:blank"></iframe>
+    <p class="mute" id="viewer-empty">Page the investigator, or press ▶ on a scoreboard row to replay a past investigation.</p>
   </section>
 
   <section class="card s12">
@@ -204,96 +194,24 @@ document.querySelectorAll('#traffic button').forEach(b=>b.onclick=async()=>{awai
 
 let investigating=false;
 const PAGES={latency:'Latency',errors:'Errors',relevance:'Relevance',ask:'Ask'};
-const DRILL=/by ?\(|aisle_embed|db_client|app_version|search_mode|query_loki_logs/;
-function setPhase(p){
-  const order=['triage','drill','report'];const i=order.indexOf(p);
-  document.querySelectorAll('.ph').forEach(el=>{const j=order.indexOf(el.dataset.p);el.classList.toggle('done',j<i||p==='finished');el.classList.toggle('active',j===i)});
-}
-function card(cls,tag,title,body){
-  const el=document.createElement('div');el.className='card2 '+cls;
-  el.innerHTML=`<div class="h"><span class="tag">${tag}</span>${title}</div>${body||''}`;
-  $('#steps').appendChild(el);$('#steps').scrollTop=1e9;return el;
-}
-function describeCall(msg){
-  const sp=msg.indexOf(' '),tool=sp<0?msg:msg.slice(0,sp);let args={};try{args=JSON.parse(msg.slice(sp+1))}catch(e){}
-  const q=args.expr||args.logql||args.metric||args.query||'';
-  const names={query_prometheus:'Asked Prometheus (metrics)',query_prometheus_histogram:'Asked Prometheus for a percentile',query_loki_logs:'Searched the logs (Loki)',query_loki_stats:'Counted log lines',list_prometheus_metric_names:'Listed metric names',list_prometheus_label_values:'Listed label values',list_loki_label_names:'Listed log labels',list_loki_label_values:'Listed log label values',list_datasources:'Listed data sources'};
-  return {tool,title:names[tool]||('Used '+tool),q:q||JSON.stringify(args)};
-}
-function seriesOf(o){
-  // finds Prometheus-style results anywhere in the tool output
-  const out=[];const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}
-    if(Array.isArray(v.values)&&Array.isArray(v.values[0]))out.push({m:v.metric||{},vals:v.values.map(p=>+p[1])});
-    else if(Array.isArray(v.value)&&v.value.length===2)out.push({m:v.metric||{},vals:[+v.value[1]]});
-    else Object.values(v).forEach(walk)};walk(o);return out;
-}
-function linesOf(o){const out=[];const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}if(typeof v.line==='string')out.push(v.line);else Object.values(v).forEach(walk)};walk(o);return out}
-const fmt=v=>!isFinite(v)?'–':Math.abs(v)>=100?v.toFixed(0):Math.abs(v)>=1?v.toFixed(2):v.toPrecision(2);
-function showResult(el,text){
-  const box=document.createElement('div');box.className='seen';
-  let o=null;try{o=JSON.parse(text)}catch(e){}
-  if(!o){box.innerHTML=`<code class="${/fail|error/i.test(text)?'err':''}">${esc(text.slice(0,500))}</code>`;el.appendChild(box);return}
-  const ser=seriesOf(o).slice(0,6),lines=linesOf(o);
-  if(ser.length&&ser.some(s=>s.vals.length>1)){
-    ser.forEach((s,i)=>{const lab=Object.entries(s.m).filter(([k])=>k!=='__name__').map(([k,v])=>k+'='+v).join(' ')||'total';
-      const nums=s.vals.filter(isFinite);const lastv=nums[nums.length-1];
-      box.insertAdjacentHTML('beforeend',`<div class="mute" style="font-size:12px">${esc(lab)} · now ${fmt(lastv)} · max ${fmt(Math.max(...nums))}</div><canvas id="sc${Date.now()}${i}"></canvas>`);
-    });el.appendChild(box);
-    box.querySelectorAll('canvas').forEach((c,i)=>{c.id=c.id||'';spark(c,ser[i].vals.map(v=>isFinite(v)?v:null))});
-  }else if(ser.length){
-    box.innerHTML=ser.map(s=>{const lab=Object.entries(s.m).filter(([k])=>k!=='__name__').map(([k,v])=>k+'='+v).join(' ')||'total';return `<div><b style="font-size:16px">${fmt(s.vals[0])}</b> <span class="mute">${esc(lab)}</span></div>`}).join('');el.appendChild(box);
-  }else if(lines.length){
-    box.innerHTML=`<div class="mute" style="font-size:12px">${lines.length} log line(s)</div><code>${esc(lines.slice(0,4).join('\n'))}</code>`;el.appendChild(box);
-  }else{
-    const empty=JSON.stringify(o).length<60||/no log entries|"data":\[\]/.test(text);
-    box.innerHTML=`<code>${empty?'nothing found':esc(text.slice(0,400))}</code>`;el.appendChild(box);
-  }
-}
-function md(src){
-  return src.split('\n').map(l=>{
-    if(/^#{1,3} /.test(l))return '<h3>'+esc(l.replace(/^#+ /,''))+'</h3>';
-    if(/^\s*[-*] /.test(l))return '<li>'+esc(l.replace(/^\s*[-*] /,''))+'</li>';
-    return l.trim()?'<p>'+esc(l)+'</p>':'';
-  }).join('').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
-}
-function verdictBadge(v){if(!v)return '<span class="verdict none">no switch on</span>';return `<span class="verdict ${v.split(' ')[0]}">${esc(v)}</span>`}
-async function loadBoard(){
-  const rows=await (await fetch('/investigations')).json();
-  $('#board tbody').innerHTML=rows.slice().reverse().map(r=>`<tr><td>${new Date(r.at).toLocaleTimeString()}</td><td>${PAGES[r.alert]||r.alert}</td><td>${esc((r.active||[]).join(', ')||'none')}</td><td>${verdictBadge(r.verdict)}</td><td>${Math.round(r.seconds)} s</td><td>${r.queries}</td><td>${r.nudges}</td><td>${(r.tokens/1000).toFixed(1)}k</td></tr>`).join('')||'<tr><td colspan="8" class="mute">none yet</td></tr>';
-  const graded=rows.filter(r=>r.verdict),ok=graded.filter(r=>r.verdict==='correct').length;
-  $('#board-sum').textContent=graded.length?`Correct root cause: ${ok} of ${graded.length} (${Math.round(100*ok/graded.length)}%). Grading checks the report's Root cause section against the switch that was on.`:'';
+function show(src){
+  const f=$('#viewer');f.style.display='block';$('#viewer-empty').style.display='none';
+  f.src='/viewer/?src='+encodeURIComponent(src);f.scrollIntoView({behavior:'smooth'});
 }
 document.querySelectorAll('#pages button').forEach(b=>b.onclick=()=>{
-  investigating=true;poll();$('#steps').innerHTML='';$('#report').style.display='none';setPhase('triage');
-  ['turns','queries','nudges'].forEach(k=>$('#st-'+k).textContent='0');$('#st-tokens').textContent='–';
-  let report='',queries=0,nudges=0,lastCall=null,t0=Date.now();
-  const tick=setInterval(()=>$('#st-time').textContent=Math.round((Date.now()-t0)/1000)+' s',500);
-  const es=new EventSource('/investigate?alert='+b.dataset.alert);
-  const data=e=>JSON.parse(e.data);
-  es.addEventListener('alert',e=>{const d=data(e);
-    card('gate','page','Paged',`<code>${esc(d.text)}</code>`);
-    $('#truth').innerHTML=d.active&&d.active.length?`Switch actually on (the investigator is not told): <b>${esc(d.active.join(', '))}</b>`:'No switch is on: this is a false alarm test.';});
-  es.addEventListener('step',e=>{const ev=data(e);
-    $('#st-turns').textContent=ev.turn||$('#st-turns').textContent;
-    if(ev.kind==='tool_call'){queries++;$('#st-queries').textContent=queries;const c=describeCall(ev.message);
-      if(DRILL.test(ev.message)&&queries>1)setPhase('drill');
-      lastCall=card('call','step '+queries,c.title,`<code>${esc(c.q)}</code>`);}
-    else if(ev.kind==='tool_result'&&lastCall){showResult(lastCall,ev.message);$('#steps').scrollTop=1e9}
-    else if(ev.kind==='lens'&&lastCall){lastCall.insertAdjacentHTML('beforeend',`<div class="seen"><div class="mute" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">What the harness told the model</div><pre style="color:var(--ink)">${esc(ev.message)}</pre></div>`);$('#steps').scrollTop=1e9}
-    else if(ev.kind==='model_reply'&&!/^\d+ tool call\(s\)$/.test(ev.message)){
-      if(/## /.test(ev.message))setPhase('report');
-      card('think','thinks',/## /.test(ev.message)?'Drafted a report':'Reasoning',`<pre>${esc(ev.message.slice(0,600))}${ev.message.length>600?' …':''}</pre>`)}
-    else if(ev.kind==='gate'){nudges++;$('#st-nudges').textContent=nudges;setPhase('drill');card('gate','report gate','Sent back: not enough evidence yet',`<pre>${esc(ev.message)}</pre>`)}
-    else if(ev.kind==='retry')card('think','retry','Model call retried',`<code>${esc(ev.message)}</code>`)
-    else if(ev.kind==='summary')$('#st-tokens').textContent=((ev.input_tokens+ev.output_tokens)/1000).toFixed(1)+'k';
-  });
-  es.addEventListener('report',e=>{report+=data(e)+'\n'});
-  es.addEventListener('done',e=>{const r=data(e);setPhase('finished');
-    $('#report').style.display='block';$('#report').innerHTML=`<div style="margin:8px 0">${verdictBadge(r.verdict)} <span class="mute">in ${Math.round(r.seconds)} s · stop: ${esc(r.stop||'?')}</span></div>`+md(report||'(no report)');
-    finish()});
-  es.onerror=()=>{if(investigating){card('gate','error','Stream ended','');finish()}};
-  function finish(){es.close();clearInterval(tick);investigating=false;poll();loadBoard()}
+  investigating=true;poll();show('/investigate?alert='+b.dataset.alert);
+  // the run ends inside the viewer; refresh the scoreboard until it shows up
+  const n=document.querySelectorAll('#board tbody tr').length,iv=setInterval(async()=>{await loadBoard();
+    if(document.querySelectorAll('#board tbody tr').length>n){clearInterval(iv);investigating=false;poll()}},5000);
 });
+function verdictBadge(v){if(!v)return '<span class="verdict none">no switch</span>';return `<span class="verdict ${v.split(' ')[0]}">${esc(v)}</span>`}
+async function loadBoard(){
+  const rows=await (await fetch('/investigations')).json();
+  $('#board tbody').innerHTML=rows.map((r,i)=>[r,i]).reverse().map(([r,i])=>`<tr><td>${new Date(r.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td><td>${PAGES[r.alert]||r.alert}</td><td>${esc((r.active||[]).join(', ')||'none')}</td><td>${verdictBadge(r.verdict)}</td><td>${Math.round(r.seconds)} s</td><td>${r.queries}</td><td><button data-replay="${i}" title="replay">▶</button></td></tr>`).join('')||'<tr><td colspan="7" class="mute">none yet</td></tr>';
+  document.querySelectorAll('[data-replay]').forEach(b=>b.onclick=()=>show(`/investigations/${b.dataset.replay}/replay?speed=4`));
+  const graded=rows.filter(r=>r.verdict),ok=graded.filter(r=>r.verdict==='correct').length;
+  $('#board-sum').textContent=graded.length?`Auto-graded correct: ${ok} of ${graded.length}. A rough guide; open a replay and read the report.`:'';
+}
 
 async function doSearch(e){
   e&&e.preventDefault();const q=$('#q').value.trim();if(!q)return;
