@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"sync"
 	"time"
 
 	"github.com/exaring/otelpgx"
@@ -25,7 +24,7 @@ var tracer = otel.Tracer("github.com/arsaljamal/aisle/internal/store")
 type Store struct {
 	pool   *pgxpool.Pool
 	Faults *faults.Set
-	slot   sync.Mutex // used only by the db-pool fault
+	slot   chan struct{} // one slot; used only by the db-pool fault
 }
 
 type Hit struct {
@@ -58,7 +57,7 @@ func Open(ctx context.Context, dsn string, efSearch int) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("postgres: %w (is `make up` running?)", err)
 	}
-	return &Store{pool: pool}, nil
+	return &Store{pool: pool, slot: make(chan struct{}, 1)}, nil
 }
 
 func (s *Store) Close() { s.pool.Close() }
@@ -156,18 +155,23 @@ func (s *Store) Counts(ctx context.Context) (total, embedded int64, err error) {
 	return
 }
 
-// guard applies the db-pool fault: every query waits for one shared slot.
-func (s *Store) guard(ctx context.Context) func() {
+// guard applies the db-pool fault: every query waits for one shared slot,
+// and gives up when the request's deadline passes, as a real pool does.
+func (s *Store) guard(ctx context.Context) (func(), error) {
 	if !s.Faults.On(faults.DBPool) {
-		return func() {}
+		return func() {}, nil
 	}
 	_, span := tracer.Start(ctx, "db.pool.acquire")
-	s.slot.Lock()
-	span.End()
-	return func() {
-		time.Sleep(time.Duration(80+rand.IntN(60)) * time.Millisecond)
-		s.slot.Unlock()
+	defer span.End()
+	select {
+	case s.slot <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("db pool: timed out waiting for a connection: %w", ctx.Err())
 	}
+	return func() {
+		time.Sleep(time.Duration(150+rand.IntN(100)) * time.Millisecond)
+		<-s.slot
+	}, nil
 }
 
 // Keyword matches any query word (OR), so long shopper queries still return
@@ -175,7 +179,11 @@ func (s *Store) guard(ctx context.Context) func() {
 func (s *Store) Keyword(ctx context.Context, query string, limit int) ([]Hit, error) {
 	ctx, span := tracer.Start(ctx, "store.keyword")
 	defer span.End()
-	defer s.guard(ctx)()
+	release, err := s.guard(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	return s.hits(ctx, `
 SELECT id, name, class, category, rating,
        (ts_rank_cd(doc, anyq, 32) + CASE WHEN doc @@ allq THEN 1 ELSE 0 END)::real AS score
@@ -190,7 +198,11 @@ LIMIT $2`, query, limit)
 func (s *Store) Vector(ctx context.Context, vec []float32, limit int) ([]Hit, error) {
 	ctx, span := tracer.Start(ctx, "store.vector")
 	defer span.End()
-	defer s.guard(ctx)()
+	release, err := s.guard(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	return s.hits(ctx, `
 SELECT id, name, class, category, rating, (1 - (embedding <=> $1))::real AS score
 FROM products

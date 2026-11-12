@@ -139,7 +139,7 @@ func (t *Traffic) set(s *Server, rps float64) {
 					mode = search.Vector
 				}
 				go func() {
-					rctx, c := context.WithTimeout(ctx, 30*time.Second)
+					rctx, c := context.WithTimeout(ctx, 5*time.Second)
 					defer c()
 					_, _ = s.search(rctx, q, mode, 10)
 				}()
