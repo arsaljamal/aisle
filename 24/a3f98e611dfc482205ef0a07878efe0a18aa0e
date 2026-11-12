@@ -1,0 +1,19 @@
+.github/workflows/test.yml
+  s_6cdbe5cdf77ca9::t_dd3b6173f048bb 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24a3f98e611dfc482205ef0a07878efe0a18aa0e",
+  "prompts": {},
+  "sessions": {
+    "s_6cdbe5cdf77ca9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "001c5900-83ae-4f5f-b7db-09f105dbb9c5",
+        "model": "unknown"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
