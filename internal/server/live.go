@@ -293,6 +293,7 @@ func (s *Server) LoadHistory() {
 	for _, line := range strings.Split(string(b), "\n") {
 		var rec Investigation
 		if json.Unmarshal([]byte(line), &rec) == nil && !rec.At.IsZero() {
+			rec.Verdict = faults.Grade(rec.Report, rec.Active) // grading rules may have changed
 			s.history = append(s.history, rec)
 		}
 	}

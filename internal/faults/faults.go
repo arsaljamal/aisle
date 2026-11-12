@@ -6,6 +6,7 @@ package faults
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -71,11 +72,11 @@ func (s *Set) Active() []string {
 // RootCause says what a correct investigation must name for each switch.
 // Used to grade reports automatically; matched against the root-cause section.
 var RootCause = map[string]*regexp.Regexp{
-	SlowEmbed:     regexp.MustCompile(`(?i)embed`),
-	DBPool:        regexp.MustCompile(`(?i)database|\bdb\b|db_client|pool|connection|postgres`),
+	SlowEmbed:     regexp.MustCompile(`(?i)embedding (host|service|latency|time|call)|maintenance|slow embed`),
+	DBPool:        regexp.MustCompile(`(?i)max_conns|connection pool|db pool|database (connection|contention|pool)|pool (size|exhaust|starv)`),
 	ModelMismatch: regexp.MustCompile(`(?i)v2-preview|embedding model|query_model|model (change|mismatch)`),
-	BadDeploy:     regexp.MustCompile(`(?i)1\.4\.1|deploy|rollout|release`),
-	LLMDown:       regexp.MustCompile(`(?i)llm|answer model|chat|endpoint`),
+	BadDeploy:     regexp.MustCompile(`(?i)(version|rollout of|deploy(ment)? of|release) (v)?1\.4\.1|1\.4\.1 (rollout|deploy|release)`),
+	LLMDown:       regexp.MustCompile(`(?i)\bllm\b|llm\.endpoint|endpoint_changed|answer model|chat model|chat/completions|connection refused`),
 }
 
 // Grade checks the root-cause section of a report against the active switches.
@@ -94,8 +95,21 @@ func Grade(report string, active []string) (verdict string) {
 	} else {
 		return "no root cause section"
 	}
+	// Correct means the true cause is named and no other switch's cause is:
+	// a report that lists every recent change has not found the root cause.
+	named := map[string]bool{}
+	for f, re := range RootCause {
+		if re.MatchString(section) {
+			named[f] = true
+		}
+	}
 	for _, f := range active {
-		if re, ok := RootCause[f]; ok && re.MatchString(section) {
+		if named[f] {
+			for other := range named {
+				if other != f && !slices.Contains(active, other) {
+					return "mixed"
+				}
+			}
 			return "correct"
 		}
 	}
