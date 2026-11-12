@@ -1,0 +1,25 @@
+internal/faults/faults_test.go
+  s_6208c722798bf1::t_eab91b5cf11836 6,29-35
+  s_6208c722798bf1::t_de6e8738e805e7 21-28,36-38
+internal/faults/faults.go
+  s_6208c722798bf1::t_de6e8738e805e7 79
+  s_6208c722798bf1::t_eab91b5cf11836 9,75-76,78,98-105,107-112
+internal/server/live.go
+  s_6208c722798bf1::t_eab91b5cf11836 296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "edee13f312e25a77083088c8be49b39c992e4289",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
