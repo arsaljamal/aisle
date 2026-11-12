@@ -38,6 +38,7 @@ func runServe(ctx context.Context, args []string) error {
 	ef := fs.Int("ef-search", 100, "HNSW search breadth")
 	investigator := fs.String("investigator", env("AISLE_INVESTIGATOR", ""),
 		`command the control room pages, e.g. "drill run --config ops/drill.yaml" (alert text is appended)`)
+	history := fs.String("history", env("AISLE_HISTORY", "incidents/investigations.jsonl"), "where the control room keeps past investigations")
 	fs.Parse(args)
 
 	shutdown, err := telemetry.Start(ctx, "aisle", server.GoodVersion)
@@ -82,6 +83,8 @@ func runServe(ctx context.Context, args []string) error {
 	srv.Traffic.Queries = qs
 	srv.Investigator = strings.Fields(*investigator)
 	srv.InvestigatorDir, _ = os.Getwd()
+	srv.HistoryFile = *history
+	srv.LoadHistory()
 
 	g := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	aislev1.RegisterSearchServiceServer(g, srv)

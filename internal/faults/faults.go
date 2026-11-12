@@ -5,7 +5,9 @@ package faults
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -64,4 +66,38 @@ func (s *Set) Active() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// RootCause says what a correct investigation must name for each switch.
+// Used to grade reports automatically; matched against the root-cause section.
+var RootCause = map[string]*regexp.Regexp{
+	SlowEmbed:     regexp.MustCompile(`(?i)embed`),
+	DBPool:        regexp.MustCompile(`(?i)database|\bdb\b|db_client|pool|connection|postgres`),
+	ModelMismatch: regexp.MustCompile(`(?i)v2-preview|embedding model|query_model|model (change|mismatch)`),
+	BadDeploy:     regexp.MustCompile(`(?i)1\.4\.1|deploy|rollout|release`),
+	LLMDown:       regexp.MustCompile(`(?i)llm|answer model|chat|endpoint`),
+}
+
+// Grade checks the root-cause section of a report against the active switches.
+// It returns "" when no switch is on (nothing to grade).
+func Grade(report string, active []string) (verdict string) {
+	if len(active) == 0 {
+		return ""
+	}
+	section := report
+	low := strings.ToLower(report)
+	if i := strings.Index(low, "## root cause"); i >= 0 {
+		section = report[i:]
+		if j := strings.Index(strings.ToLower(section[3:]), "## "); j >= 0 {
+			section = section[:j+3]
+		}
+	} else {
+		return "no root cause section"
+	}
+	for _, f := range active {
+		if re, ok := RootCause[f]; ok && re.MatchString(section) {
+			return "correct"
+		}
+	}
+	return "wrong"
 }

@@ -3,16 +3,21 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/arsaljamal/aisle/internal/catalog"
+	"github.com/arsaljamal/aisle/internal/faults"
 	"github.com/arsaljamal/aisle/internal/search"
 )
 
@@ -158,10 +163,28 @@ var Alerts = map[string]string{
 	"ask":       "PAGE: aisle Ask endpoint is failing. Investigate and find the root cause.",
 }
 
+// Investigation is one paging of the investigator, kept for the scoreboard.
+type Investigation struct {
+	At      time.Time         `json:"at"`
+	Alert   string            `json:"alert"`
+	Active  []string          `json:"active"` // switches on when paged: the true cause
+	Seconds float64           `json:"seconds"`
+	Turns   int               `json:"turns"`
+	Queries int               `json:"queries"`
+	Nudges  int               `json:"nudges"` // times the report gate sent the report back
+	Tokens  int64             `json:"tokens"`
+	Stop    string            `json:"stop"`
+	Verdict string            `json:"verdict"`
+	Report  string            `json:"report"`
+	Steps   []json.RawMessage `json:"steps,omitempty"` // every harness event, for replays
+}
+
 // investigate runs the configured investigator command with the alert as its
-// last argument and streams every output line as a server-sent event.
+// last argument and streams every output line as a server-sent event. Run the
+// investigator with --events json so steps arrive as JSON objects.
 func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
-	alert, ok := Alerts[r.URL.Query().Get("alert")]
+	key := r.URL.Query().Get("alert")
+	alert, ok := Alerts[key]
 	if !ok || len(s.Investigator) == 0 {
 		http.Error(w, "unknown alert or no investigator configured (serve --investigator)", http.StatusBadRequest)
 		return
@@ -178,10 +201,12 @@ func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	send := func(event, data string) {
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, strconv.Quote(data))
+	send := func(event string, data any) {
+		b, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
 		flusher.Flush()
 	}
+	rec := Investigation{At: time.Now(), Alert: key, Active: s.Faults.Active()}
 	args := append(append([]string(nil), s.Investigator[1:]...), alert)
 	cmd := exec.CommandContext(r.Context(), s.Investigator[0], args...)
 	cmd.Dir = s.InvestigatorDir
@@ -191,29 +216,90 @@ func (s *Server) investigate(w http.ResponseWriter, r *http.Request) {
 		send("error", err.Error())
 		return
 	}
-	send("alert", alert)
+	send("alert", map[string]any{"text": alert, "active": rec.Active})
 	lines := make(chan [2]string)
 	var wg sync.WaitGroup
-	for kind, pipe := range map[string]interface{ Read([]byte) (int, error) }{"report": stdout, "step": stderr} {
+	for kind, pipe := range map[string]io.Reader{"report": stdout, "step": stderr} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sc := bufio.NewScanner(pipe)
-			sc.Buffer(make([]byte, 64*1024), 1024*1024)
+			sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 			for sc.Scan() {
 				lines <- [2]string{kind, sc.Text()}
 			}
 		}()
 	}
 	go func() { wg.Wait(); close(lines) }()
-	start := time.Now()
+	var report strings.Builder
 	for l := range lines {
-		send(l[0], l[1])
+		if l[0] == "report" {
+			report.WriteString(l[1] + "\n")
+			send("report", l[1])
+			continue
+		}
+		var ev struct {
+			Kind         string `json:"kind"`
+			Turn         int    `json:"turn"`
+			Stop         string `json:"stop"`
+			InputTokens  int64  `json:"input_tokens"`
+			OutputTokens int64  `json:"output_tokens"`
+		}
+		if json.Unmarshal([]byte(l[1]), &ev) != nil || ev.Kind == "" {
+			continue // tool server logs, not investigator steps
+		}
+		switch ev.Kind {
+		case "tool_call":
+			rec.Queries++
+		case "gate":
+			rec.Nudges++
+		case "summary":
+			rec.Turns, rec.Stop, rec.Tokens = ev.Turn, ev.Stop, ev.InputTokens+ev.OutputTokens
+		}
+		rec.Steps = append(rec.Steps, json.RawMessage(l[1]))
+		send("step", json.RawMessage(l[1]))
 	}
-	err := cmd.Wait()
-	status := "finished"
+	_ = cmd.Wait()
+	rec.Seconds = time.Since(rec.At).Seconds()
+	rec.Report = report.String()
+	rec.Verdict = faults.Grade(rec.Report, rec.Active)
+	s.saveInvestigation(rec)
+	send("done", rec)
+}
+
+func (s *Server) saveInvestigation(rec Investigation) {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	s.history = append(s.history, rec)
+	if s.HistoryFile == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(s.HistoryFile), 0o755)
+	f, err := os.OpenFile(s.HistoryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		status = "finished with " + err.Error()
+		return
 	}
-	send("done", fmt.Sprintf("%s in %.0fs", status, time.Since(start).Seconds()))
+	defer f.Close()
+	b, _ := json.Marshal(rec)
+	f.Write(append(b, '\n'))
+}
+
+// LoadHistory reads earlier investigations so the scoreboard survives restarts.
+func (s *Server) LoadHistory() {
+	b, err := os.ReadFile(s.HistoryFile)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		var rec Investigation
+		if json.Unmarshal([]byte(line), &rec) == nil && !rec.At.IsZero() {
+			s.history = append(s.history, rec)
+		}
+	}
+}
+
+func (s *Server) investigations() []Investigation {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	return append([]Investigation(nil), s.history...)
 }

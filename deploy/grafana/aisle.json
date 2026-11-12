@@ -478,7 +478,7 @@
   },
   {
    "type": "timeseries",
-   "title": "Database time (p95 by operation)",
+   "title": "Time by component (p95)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -515,9 +515,18 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "histogram_quantile(0.95, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[1m])))",
-     "legendFormat": "{{db_operation_name}}",
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(aisle_embed_duration_seconds_bucket[1m])))",
+     "legendFormat": "query embedding",
      "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[1m])))",
+     "legendFormat": "database {{db_operation_name}}",
+     "refId": "B"
     }
    ]
   },

@@ -16,11 +16,17 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/arsaljamal/aisle/internal/faults"
 )
 
-var tracer = otel.Tracer("github.com/arsaljamal/aisle/internal/embed")
+var (
+	tracer      = otel.Tracer("github.com/arsaljamal/aisle/internal/embed")
+	duration, _ = otel.Meter("github.com/arsaljamal/aisle/internal/embed").Float64Histogram("aisle.embed.duration",
+		metric.WithUnit("s"), metric.WithDescription("Time to embed a search query"),
+		metric.WithExplicitBucketBoundaries(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5))
+)
 
 type Client struct {
 	BaseURL string // e.g. http://localhost:11434/v1
@@ -35,6 +41,10 @@ type Client struct {
 func (c *Client) Query(ctx context.Context, text string) ([]float32, error) {
 	ctx, span := tracer.Start(ctx, "embed.query")
 	defer span.End()
+	start := time.Now()
+	defer func() {
+		duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attribute.String("embed.model", c.Model)))
+	}()
 	if c.Faults.On(faults.SlowEmbed) {
 		time.Sleep(1200*time.Millisecond + time.Duration(rand.IntN(300))*time.Millisecond)
 	}

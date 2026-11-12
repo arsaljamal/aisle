@@ -55,8 +55,10 @@ y += 8
 panels += [
     ts("Live relevance by mode", [('sum by (search_mode) (rate(aisle_search_relevance_sum[2m])) / sum by (search_mode) (rate(aisle_search_relevance_count[2m]))', "{{search_mode}}")],
        0, unit="none", desc="NDCG@10 for live searches that match a labelled query"),
-    ts("Database time (p95 by operation)", [('histogram_quantile(0.95, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[1m])))', "{{db_operation_name}}")],
-       12, unit="s"),
+    ts("Time by component (p95)", [
+        ('histogram_quantile(0.95, sum by (le) (rate(aisle_embed_duration_seconds_bucket[1m])))', "query embedding"),
+        ('histogram_quantile(0.95, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[1m])))', "database {{db_operation_name}}"),
+    ], 12, unit="s"),
 ]
 y += 8
 panels += [

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -53,7 +54,12 @@ type Server struct {
 	Live            Live
 	Traffic         Traffic
 
+	// HistoryFile keeps past investigations (JSON lines) for the scoreboard.
+	HistoryFile string
+
 	investigating sync.Mutex
+	historyMu     sync.Mutex
+	history       []Investigation
 	version       atomic.Value
 	relevance     metric.Float64Histogram
 }
@@ -221,6 +227,9 @@ func (s *Server) HTTP() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"traffic_rps": s.Traffic.current()})
 	})
 	mux.HandleFunc("GET /investigate", s.investigate)
+	mux.HandleFunc("GET /investigations", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, s.investigations())
+	})
 	mux.HandleFunc("GET /admin/faults", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"active": s.Faults.Active(), "available": faults.Catalogue})
 	})
@@ -246,23 +255,27 @@ func (s *Server) announce(ctx context.Context, name string, on bool) {
 			v = BadVersion
 		}
 		s.version.Store(v)
-		slog.InfoContext(ctx, "rollout complete", "version", v, "change", "fusion: reuse rank buffers across requests")
+		slog.InfoContext(ctx, "rollout complete: version "+v, "version", v, "change", "fusion: reuse rank buffers across requests")
 	case faults.ModelMismatch:
 		model := s.EmbedModel
 		if on {
 			model = s.EmbedModel + "-v2-preview"
 		}
-		slog.InfoContext(ctx, "config reloaded", "embed.query_model", model)
+		slog.InfoContext(ctx, "config reloaded: embed.query_model="+model, "embed.query_model", model)
 	case faults.LLMDown:
-		slog.InfoContext(ctx, "config reloaded", "llm.endpoint_changed", on)
+		slog.InfoContext(ctx, fmt.Sprintf("config reloaded: llm.endpoint_changed=%t", on), "llm.endpoint_changed", on)
 	case faults.DBPool:
 		max := 20
 		if on {
 			max = 1
 		}
-		slog.InfoContext(ctx, "config reloaded", "db.max_conns", max)
+		slog.InfoContext(ctx, fmt.Sprintf("config reloaded: db.max_conns=%d", max), "db.max_conns", max)
 	case faults.SlowEmbed:
-		slog.InfoContext(ctx, "embedding host maintenance window", "started", on)
+		state := "ended"
+		if on {
+			state = "started"
+		}
+		slog.InfoContext(ctx, "embedding host maintenance window "+state, "started", on)
 	}
 }
 
