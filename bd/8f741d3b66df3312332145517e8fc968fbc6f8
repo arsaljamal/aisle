@@ -1,0 +1,50 @@
+internal/server/ui/index.html
+  s_6208c722798bf1::t_47211432618ba4 282
+  s_6208c722798bf1::t_9a6b714e8ab118 38,58-85,124-137,141-146,166,206-250,259-265,267-270,272-281,283-288,290-295,319
+cmd/aisle/serve.go
+  s_6208c722798bf1::t_a942083d850007 41,86-87
+.gitignore
+  s_6208c722798bf1::t_25dadd2e176c41 4
+internal/faults/faults.go
+  s_6208c722798bf1::t_9b8123e4be5909 10
+  s_6208c722798bf1::t_4f030003002590 8,70-103
+deploy/grafana/aisle.json
+  s_6208c722798bf1::t_bda5e3c5b7f9a5 481,518-519,521-529
+internal/server/live.go
+  s_6208c722798bf1::t_9b8123e4be5909 13,277
+  s_6208c722798bf1::t_5f94f1e74576f9 259
+  s_6208c722798bf1::t_a942083d850007 6,8,11,15,20,166-167,180-181,183-184,186-187,204-206,209,219,222,227,234,236-258,260-275,278,280-297,299-304
+  s_6208c722798bf1::t_06ed209f66c991 168-179
+scripts/scenarios.sh
+  s_6208c722798bf1::t_d7b638a81db627 1-33
+ops/drill.yaml
+  s_6208c722798bf1::t_bda5e3c5b7f9a5 8,13-28,41,46,49-50,53-63
+  s_6208c722798bf1::t_4641bc48ca5962 29-40,42-45,51-52
+scripts/dashboard.py
+  s_6208c722798bf1::t_bda5e3c5b7f9a5 58-61
+internal/faults/faults_test.go
+  s_6208c722798bf1::t_4f030003002590 1-20
+internal/embed/embed.go
+  s_6208c722798bf1::t_d826e89890042f 19,24-29,44-47
+internal/server/server.go
+  s_6208c722798bf1::t_a942083d850007 57-59,61-62,230-232
+  s_6208c722798bf1::t_06ed209f66c991 9,258,264,266,272,274-278
+ops/drill-v2.yaml
+  s_6208c722798bf1::t_63ada1250ed127 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd8f741d3b66df3312332145517e8fc968fbc6f8",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
